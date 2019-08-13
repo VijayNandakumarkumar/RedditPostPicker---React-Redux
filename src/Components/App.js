@@ -64,7 +64,8 @@ class App extends Component {
           this.props.loadPageWithAfterBefore({
             files: data.data.children,
             after: data.data.after, //to get the next set of post
-            before: data.data.before //to load previous post if any
+            before: data.data.before, //to load previous post if any
+            page: this.props.state.page
           });
           window.scrollTo(0, 0);
         })
@@ -116,6 +117,7 @@ class App extends Component {
           page: this.props.reduced_state.page + 1
         });
         window.scrollTo(0, 0);
+        console.log("Reduced state", this.props.reduced_state);
       })
       .catch(console.log);
   };
