@@ -3,33 +3,33 @@ import "../App.css";
 import Wallpapers from "./wallpaper";
 import _ from "lodash";
 import SearchBar from "./search_bar";
+import { bindActionCreators } from "redux";
+import { connect } from "react-redux";
+import {
+  loadPage,
+  loadPageWithAfterBefore,
+  setFilesEmpty
+} from "../actions/index";
+import InitialState from "../reducers/reducers_initial_state";
 
 class App extends Component {
-  state = {
-    subReddit: "wallpapers", //wallpapers_by_default
-    files: [],
-    after: null,
-    before: null,
-    page: 1
-  };
-
   constructor(props) {
     super(props);
     this.url = "https://www.reddit.com/r/";
     this.wallpaperSubreddits = "wallpapers";
     this.catsSubreddits = "cats";
+
     this.subredditsArray = [
-      "wallpaper",
-      "wallpapers",
-      "widescreenwallpaper",
-      "wqhd_wallpaper",
-      "memes",
-      "dankmemes",
-      "memeeconomy",
-      "animemes",
-      "mobilewallpapers",
-      "amoledbackgrounds",
-      "verticalwallpapers"
+      "images",
+      "photoshopbattles",
+      "hmmm",
+      "all",
+      "aww",
+      "alternative",
+      "pics",
+      "gifs",
+      "adviceanimals",
+      "cats"
     ];
     this.portraitSubreddits =
       "mobilewallpapers+amoledbackgrounds+verticalwallpapers";
@@ -37,45 +37,83 @@ class App extends Component {
   }
 
   componentDidMount() {
-    this.updatePage(this.state.subReddit);
+    if (this.props.reduced_state === null) {
+      this.updatePage(this.props.state.subReddit);
+    } else {
+      this.updatePage(this.props.reduced_state.subReddit);
+    }
   }
 
   updatePage(sub) {
     // Resetting the State
-    this.setState({
+
+    const new_state = {
       files: [],
       subReddit: sub,
       page: 1
-    });
+    };
 
-    fetch(this.url + sub + ".json?limit=100")
-      .then(response => response.json())
-      .then(data => {
-        this.setState({
-          files: data.data.children,
-          after: data.data.after, //to get the next set of post
-          before: data.data.before //to load previous post if any
-        });
-        window.scrollTo(0, 0);
-      })
-      .catch(console.log);
+    this.props.loadPage(new_state);
+
+    if (!this.props.reduced_state) {
+      fetch(
+        this.url + sub + ".json?limit=100&count=" + this.props.state.page * 100
+      )
+        .then(response => response.json())
+        .then(data => {
+          this.props.loadPageWithAfterBefore({
+            files: data.data.children,
+            after: data.data.after, //to get the next set of post
+            before: data.data.before //to load previous post if any
+          });
+          window.scrollTo(0, 0);
+        })
+        .catch(console.log);
+    } else {
+      fetch(
+        this.url +
+          sub +
+          ".json?limit=100&count=" +
+          this.props.reduced_state.page * 100
+      )
+        .then(response => response.json())
+        .then(data => {
+          this.props.loadPageWithAfterBefore({
+            files: data.data.children,
+            after: data.data.after, //to get the next set of post
+            before: data.data.before, //to load previous post if any
+            page: this.props.reduced_state.page
+          });
+          window.scrollTo(0, 0);
+        })
+        .catch(console.log);
+    }
   }
 
   loadNextPage = () => {
+    let new_state;
+    new_state = {
+      files: []
+    };
+
+    this.props.setFilesEmpty(new_state);
+
     fetch(
       this.url +
-        this.state.subReddit +
+        this.props.reduced_state.subReddit +
         ".json?limit=100" +
         "&after=" +
-        this.state.after
+        this.props.reduced_state.after +
+        "&count=" +
+        this.props.reduced_state.page * 100
     )
-      .then(response => response.json)
+      .then(response => response.json())
       .then(data => {
-        this.setState({
+        this.props.loadPageWithAfterBefore({
           files: data.data.children,
           after: data.data.after,
           before: data.data.before,
-          page: this.state.page + 1
+          page: this.props.reduced_state.page + 1
         });
         window.scrollTo(0, 0);
       })
@@ -83,23 +121,32 @@ class App extends Component {
   };
 
   loadPrevPage = () => {
+    let new_state;
+    new_state = {
+      files: []
+    };
+
+    this.props.setFilesEmpty(new_state);
+
     fetch(
       this.url +
-        this.state.subReddit +
+        this.props.reduced_state.subReddit +
         ".json?limit=100" +
         "&before=" +
-        this.state.before
+        this.props.reduced_state.subReddit +
+        "&count=" +
+        ((this.props.reduced_state.page - 1) * 100 - 1)
     )
-      .then(response => response.json)
+      .then(response => response.json())
       .then(data => {
-        let newState = {
+        new_state = {
           files: data.data.children,
           after: data.data.after,
           before: data.data.before
         };
-
-        if (this.state.page > 1) newState.page = this.state.page - 1;
-        this.setState(newState);
+        if (this.props.reduced_state.page > 1)
+          new_state.page = this.props.reduced_state.page - 1;
+        this.props.loadPageWithAfterBefore(new_state);
       })
       .catch(console.log);
   };
@@ -108,7 +155,7 @@ class App extends Component {
     if (subreddit.length !== 0) {
       this.updatePage(subreddit);
     } else {
-      this.updatePage(this.state.subReddit);
+      this.updatePage(this.props.reduced_state.subReddit);
     }
   }
 
@@ -117,7 +164,20 @@ class App extends Component {
       this.searchSubreddit(term);
     }, 600);
     let contentJSX;
-    if (this.state.files.length > 0) {
+
+    if (
+      this.props.reduced_state === null ||
+      this.props.reduced_state.files.length === 0
+    ) {
+      contentJSX = (
+        <div
+          className="p-2"
+          style={{ textAlign: "center", margin: "20% auto 50%" }}
+        >
+          <h1>Loading...</h1>
+        </div>
+      );
+    } else {
       let pageJSX;
       const nextBtn = (
         <button
@@ -132,21 +192,31 @@ class App extends Component {
         <button
           className="btn btn-primary"
           type="submit"
-          onClick={this.state.loadPrevPage}
+          onClick={this.loadPrevPage}
         >
           prev
         </button>
       );
-
-      if (this.state.after === null && this.state.before !== null) {
+      if (
+        this.props.reduced_state.after === null &&
+        this.props.reduced_state.before !== null
+      ) {
         pageJSX = <div>{prevBtn}</div>;
-      } else if (this.state.after !== null && this.state.before === null) {
+      } else if (
+        this.props.reduced_state.after !== null &&
+        this.props.reduced_state.before === null
+      ) {
         pageJSX = <div>{nextBtn}</div>;
-      } else if (this.state.after !== null && this.state.before !== null) {
+      } else if (
+        this.props.reduced_state.after !== null &&
+        this.props.reduced_state.before !== null
+      ) {
         pageJSX = (
           <div>
             {prevBtn}
-            <span className="p-3 text-black-50">Page {this.state.page}</span>
+            <span className="p-3 text-black-50">
+              Page {this.props.reduced_state.page}
+            </span>
             {nextBtn}
           </div>
         );
@@ -155,22 +225,28 @@ class App extends Component {
       }
       contentJSX = (
         <div className="m-2">
-          <Wallpapers files={this.state.files} />
+          <Wallpapers files={this.props.reduced_state.files} />
           <br />
-          <div className="center-block m-2">{pageJSX}</div>
+          <div className="center-block m-2">{pageJSX}</div>;
         </div>
       );
-    } else {
-      contentJSX = <div className="p-2">Loading...</div>;
     }
+    let currentSubreddit;
 
-    let currentSubreddit = "r/" + this.state.subReddit;
+    if (this.props.reduced_state !== null) {
+      currentSubreddit = "r/" + this.props.reduced_state.subReddit;
+    } else {
+      currentSubreddit = "r/aww";
+    }
 
     return (
       <div className="container">
         <br />
         <div>
-          <div className="dropdown m-2" style={{ display: "inline" }}>
+          <div
+            className="dropdown m-2"
+            style={{ display: "inline", width: "20%" }}
+          >
             <button
               className="btn btn-outline-success dropdown-toggle"
               type="button"
@@ -182,27 +258,6 @@ class App extends Component {
               {currentSubreddit} &nbsp;
             </button>
             <div className="dropdown-menu" aria-labelledby="dropdownMenuButton">
-              <a
-                className="dropdown-item"
-                href="#subChange"
-                onClick={() => this.updatePage(this.wallpaperSubreddits)}
-              >
-                Landscape Wallpapers
-              </a>
-              <a
-                className="dropdown-item"
-                href="#subChange"
-                onClick={() => this.updatePage(this.portraitSubreddits)}
-              >
-                Portrait Wallpapers
-              </a>
-              <a
-                className="dropdown-item"
-                href="#subChange"
-                onClick={() => this.updatePage(this.memesSubreddits)}
-              >
-                Memes Subreddits
-              </a>
               {this.subredditsArray.map((subreddit, index) => (
                 <a
                   className="dropdown-item"
@@ -215,10 +270,10 @@ class App extends Component {
               ))}
             </div>
           </div>
-          <div className="m-3" />
           <SearchBar onSearchTermChange={term => searchSubreddit(term)} />
         </div>
         <br />
+        <hr />
         {contentJSX}
         <br />
       </div>
@@ -226,4 +281,22 @@ class App extends Component {
   }
 }
 
-export default App;
+function mapStateToProps(state) {
+  return { state: state.initial_state, reduced_state: state.reduced_state };
+}
+
+function mapDispatchToProps(dispatch) {
+  return bindActionCreators(
+    {
+      loadPage: loadPage,
+      loadPageWithAfterBefore: loadPageWithAfterBefore,
+      setFilesEmpty: setFilesEmpty
+    },
+    dispatch
+  );
+}
+
+export default connect(
+  mapStateToProps,
+  mapDispatchToProps
+)(App);
